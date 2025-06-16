@@ -1,177 +1,123 @@
 <?php
+
 class Denuncia {
-    private $conn;
-    private $table_name = "denuncias";
+    private $db;
 
-    public $id;
-    public $titulo;
-    public $descripcion;
-    public $ubicacion;
-    public $estado;
-    public $ciudadano;
-    public $telefono_ciudadano;
-    public $fecha_registro;
-
-    public function __construct($db) {
-        $this->conn = $db;
+    public function __construct() {
+        $this->db = new Database;
     }
 
-    // Create new complaint
-    public function create() {
-        $query = "INSERT INTO " . $this->table_name . "
-                (titulo, descripcion, ubicacion, estado, ciudadano, telefono_ciudadano)
-                VALUES
-                (:titulo, :descripcion, :ubicacion, :estado, :ciudadano, :telefono_ciudadano)";
-
-        $stmt = $this->conn->prepare($query);
-
-        // Sanitize input
-        $this->titulo = htmlspecialchars(strip_tags($this->titulo));
-        $this->descripcion = htmlspecialchars(strip_tags($this->descripcion));
-        $this->ubicacion = htmlspecialchars(strip_tags($this->ubicacion));
-        $this->estado = htmlspecialchars(strip_tags($this->estado));
-        $this->ciudadano = htmlspecialchars(strip_tags($this->ciudadano));
-        $this->telefono_ciudadano = htmlspecialchars(strip_tags($this->telefono_ciudadano));
-
-        // Bind values
-        $stmt->bindParam(":titulo", $this->titulo);
-        $stmt->bindParam(":descripcion", $this->descripcion);
-        $stmt->bindParam(":ubicacion", $this->ubicacion);
-        $stmt->bindParam(":estado", $this->estado);
-        $stmt->bindParam(":ciudadano", $this->ciudadano);
-        $stmt->bindParam(":telefono_ciudadano", $this->telefono_ciudadano);
-
-        if($stmt->execute()) {
-            return true;
-        }
-        return false;
+    public function obtenerTodasLasDenuncias() {
+        $this->db->query('SELECT * FROM denuncias ORDER BY fecha_registro DESC');
+        return $this->db->resultSet();
     }
 
-    // Read all complaints with pagination
-    public function read($page = 1, $records_per_page = 10, $search = "") {
-        $offset = ($page - 1) * $records_per_page;
+
+    public function obtenerDenunciaPorId($id) {
+        $this->db->query('SELECT * FROM denuncias WHERE id = :id');
+        $this->db->bind(':id', $id);
+        return $this->db->single();
+    }
+
+
+    public function obtenerTotalDenuncias() {
+        $this->db->query('SELECT COUNT(*) as total FROM denuncias');
+        return $this->db->single()->total;
+    }
+
+
+    public function obtenerDenunciasPorEstado($estado) {
+        $this->db->query('SELECT COUNT(*) as total FROM denuncias WHERE estado = :estado');
+        $this->db->bind(':estado', $estado);
+        return $this->db->single()->total;
+    }
+
+
+    public function obtenerDenunciasRecientes($limite) {
+        $this->db->query('SELECT * FROM denuncias ORDER BY fecha_registro DESC LIMIT :limite');
+        $this->db->bind(':limite', $limite);
+        return $this->db->resultSet();
+    }
+
+
+    public function obtenerDenunciasPorCiudadano($ciudadano) {
+        $this->db->query('SELECT * FROM denuncias WHERE ciudadano = :ciudadano ORDER BY fecha_registro DESC');
+        $this->db->bind(':ciudadano', $ciudadano);
+        return $this->db->resultSet();
+    }
+
+
+    public function obtenerDenunciasPorUbicacion($ubicacion) {
+        $this->db->query('SELECT * FROM denuncias WHERE ubicacion = :ubicacion ORDER BY fecha_registro DESC');
+        $this->db->bind(':ubicacion', $ubicacion);
+        return $this->db->resultSet();
+    }
+
+
+    public function crearDenuncia($datos) {
+        $this->db->query('INSERT INTO denuncias (titulo, descripcion, ubicacion, estado, ciudadano, telefono_ciudadano) 
+                         VALUES (:titulo, :descripcion, :ubicacion, :estado, :ciudadano, :telefono_ciudadano)');
         
-        $where = "";
-        if(!empty($search)) {
-            $where = "WHERE titulo LIKE :search 
-                     OR ciudadano LIKE :search 
-                     OR ubicacion LIKE :search";
-        }
+        $this->db->bind(':titulo', $datos['titulo']);
+        $this->db->bind(':descripcion', $datos['descripcion']);
+        $this->db->bind(':ubicacion', $datos['ubicacion']);
+        $this->db->bind(':estado', $datos['estado']);
+        $this->db->bind(':ciudadano', $datos['ciudadano']);
+        $this->db->bind(':telefono_ciudadano', $datos['telefono_ciudadano']);
 
-        $query = "SELECT * FROM " . $this->table_name . " 
-                 " . $where . "
-                 ORDER BY fecha_registro DESC 
-                 LIMIT :offset, :records_per_page";
-
-        $stmt = $this->conn->prepare($query);
-        
-        if(!empty($search)) {
-            $search = "%{$search}%";
-            $stmt->bindParam(":search", $search);
-        }
-        
-        $stmt->bindParam(":offset", $offset, PDO::PARAM_INT);
-        $stmt->bindParam(":records_per_page", $records_per_page, PDO::PARAM_INT);
-        
-        $stmt->execute();
-        
-        return $stmt;
+        return $this->db->execute();
     }
 
-    // Get total number of records
-    public function getTotalRecords($search = "") {
-        $where = "";
-        if(!empty($search)) {
-            $where = "WHERE titulo LIKE :search 
-                     OR ciudadano LIKE :search 
-                     OR ubicacion LIKE :search";
-        }
 
-        $query = "SELECT COUNT(*) as total FROM " . $this->table_name . " " . $where;
-        $stmt = $this->conn->prepare($query);
-
-        if(!empty($search)) {
-            $search = "%{$search}%";
-            $stmt->bindParam(":search", $search);
-        }
-
-        $stmt->execute();
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        return $row['total'];
+    public function actualizarEstado($id, $estado) {
+        $this->db->query('UPDATE denuncias SET estado = :estado WHERE id = :id');
+        $this->db->bind(':id', $id);
+        $this->db->bind(':estado', $estado);
+        return $this->db->execute();
     }
 
-    // Read single complaint
-    public function readOne() {
-        $query = "SELECT * FROM " . $this->table_name . " WHERE id = ? LIMIT 0,1";
-        $stmt = $this->conn->prepare($query);
-        $stmt->bindParam(1, $this->id);
-        $stmt->execute();
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if($row) {
-            $this->titulo = $row['titulo'];
-            $this->descripcion = $row['descripcion'];
-            $this->ubicacion = $row['ubicacion'];
-            $this->estado = $row['estado'];
-            $this->ciudadano = $row['ciudadano'];
-            $this->telefono_ciudadano = $row['telefono_ciudadano'];
-            $this->fecha_registro = $row['fecha_registro'];
-            return true;
-        }
-        return false;
+    public function eliminarDenuncia($id) {
+        $this->db->query('DELETE FROM denuncias WHERE id = :id');
+        $this->db->bind(':id', $id);
+        return $this->db->execute();
     }
 
-    // Update complaint
-    public function update() {
-        $query = "UPDATE " . $this->table_name . "
-                SET
-                    titulo = :titulo,
-                    descripcion = :descripcion,
-                    ubicacion = :ubicacion,
-                    estado = :estado,
-                    ciudadano = :ciudadano,
-                    telefono_ciudadano = :telefono_ciudadano
-                WHERE
-                    id = :id";
 
-        $stmt = $this->conn->prepare($query);
+    public function actualizarDenuncia($datos) {
+        $this->db->query('UPDATE denuncias 
+                         SET titulo = :titulo, 
+                             descripcion = :descripcion, 
+                             ubicacion = :ubicacion, 
+                             estado = :estado, 
+                             ciudadano = :ciudadano, 
+                             telefono_ciudadano = :telefono_ciudadano 
+                         WHERE id = :id');
+        
+        $this->db->bind(':id', $datos['id']);
+        $this->db->bind(':titulo', $datos['titulo']);
+        $this->db->bind(':descripcion', $datos['descripcion']);
+        $this->db->bind(':ubicacion', $datos['ubicacion']);
+        $this->db->bind(':estado', $datos['estado']);
+        $this->db->bind(':ciudadano', $datos['ciudadano']);
+        $this->db->bind(':telefono_ciudadano', $datos['telefono_ciudadano']);
 
-        // Sanitize input
-        $this->titulo = htmlspecialchars(strip_tags($this->titulo));
-        $this->descripcion = htmlspecialchars(strip_tags($this->descripcion));
-        $this->ubicacion = htmlspecialchars(strip_tags($this->ubicacion));
-        $this->estado = htmlspecialchars(strip_tags($this->estado));
-        $this->ciudadano = htmlspecialchars(strip_tags($this->ciudadano));
-        $this->telefono_ciudadano = htmlspecialchars(strip_tags($this->telefono_ciudadano));
-        $this->id = htmlspecialchars(strip_tags($this->id));
-
-        // Bind values
-        $stmt->bindParam(":titulo", $this->titulo);
-        $stmt->bindParam(":descripcion", $this->descripcion);
-        $stmt->bindParam(":ubicacion", $this->ubicacion);
-        $stmt->bindParam(":estado", $this->estado);
-        $stmt->bindParam(":ciudadano", $this->ciudadano);
-        $stmt->bindParam(":telefono_ciudadano", $this->telefono_ciudadano);
-        $stmt->bindParam(":id", $this->id);
-
-        if($stmt->execute()) {
-            return true;
-        }
-        return false;
+        return $this->db->execute();
     }
 
-    // Delete complaint
-    public function delete() {
-        $query = "DELETE FROM " . $this->table_name . " WHERE id = ?";
-        $stmt = $this->conn->prepare($query);
-        $this->id = htmlspecialchars(strip_tags($this->id));
-        $stmt->bindParam(1, $this->id);
 
-        if($stmt->execute()) {
-            return true;
-        }
-        return false;
+    public function contarDenuncias() {
+        $this->db->query('SELECT COUNT(*) as total FROM denuncias');
+        $result = $this->db->single();
+        return $result->total;
+    }
+
+
+    public function contarDenunciasPorEstado($estado) {
+        $this->db->query('SELECT COUNT(*) as total FROM denuncias WHERE estado = :estado');
+        $this->db->bind(':estado', $estado);
+        $result = $this->db->single();
+        return $result->total;
     }
 }
 ?> 

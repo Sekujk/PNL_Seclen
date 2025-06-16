@@ -1,81 +1,133 @@
 <?php
-require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../models/Denuncia.php';
 
 class DenunciaController {
-    private $db;
-    private $denuncia;
+    private $denunciaModel;
 
     public function __construct() {
-        $database = new Database();
-        $this->db = $database->getConnection();
-        $this->denuncia = new Denuncia($this->db);
+        $this->denunciaModel = new Denuncia();
     }
+
 
     public function index() {
-        $page = isset($_GET['page']) ? $_GET['page'] : 1;
-        $search = isset($_GET['search']) ? $_GET['search'] : "";
-        $records_per_page = 10;
-
-        $stmt = $this->denuncia->read($page, $records_per_page, $search);
-        $total_records = $this->denuncia->getTotalRecords($search);
-        $total_pages = ceil($total_records / $records_per_page);
-
-        include __DIR__ . '/../views/denuncias/index.php';
+        try {
+            $denuncias = $this->denunciaModel->obtenerTodasLasDenuncias();
+            view('denuncias/index', ['denuncias' => $denuncias]);
+        } catch (Exception $e) {
+            $_SESSION['error'] = 'Error al cargar las denuncias: ' . $e->getMessage();
+            view('denuncias/index', ['denuncias' => []]);
+        }
     }
 
-    public function create() {
+
+    public function crear() {
         if($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $this->denuncia->titulo = $_POST['titulo'];
-            $this->denuncia->descripcion = $_POST['descripcion'];
-            $this->denuncia->ubicacion = $_POST['ubicacion'];
-            $this->denuncia->estado = $_POST['estado'];
-            $this->denuncia->ciudadano = $_POST['ciudadano'];
-            $this->denuncia->telefono_ciudadano = $_POST['telefono_ciudadano'];
+            try {
+                $datos = [
+                    'titulo' => trim($_POST['titulo']),
+                    'descripcion' => trim($_POST['descripcion']),
+                    'ubicacion' => trim($_POST['ubicacion']),
+                    'estado' => 'pendiente',
+                    'ciudadano' => trim($_POST['ciudadano']),
+                    'telefono_ciudadano' => trim($_POST['telefono_ciudadano'])
+                ];
 
-            if($this->denuncia->create()) {
-                header("Location: index.php?action=index");
-                exit();
+                if($this->denunciaModel->crearDenuncia($datos)) {
+                    $_SESSION['success'] = 'Denuncia creada exitosamente';
+                    redirect('?controller=denuncias');
+                } else {
+                    throw new Exception('Error al crear la denuncia');
+                }
+            } catch (Exception $e) {
+                $_SESSION['error'] = $e->getMessage();
+                view('denuncias/create', ['datos' => $datos]);
             }
+        } else {
+            view('denuncias/create');
         }
-        include __DIR__ . '/../views/denuncias/create.php';
     }
 
-    public function edit() {
-        if(!isset($_GET['id'])) {
-            header("Location: index.php?action=index");
-            exit();
-        }
 
-        $this->denuncia->id = $_GET['id'];
-        $this->denuncia->readOne();
-
-        if($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $this->denuncia->titulo = $_POST['titulo'];
-            $this->denuncia->descripcion = $_POST['descripcion'];
-            $this->denuncia->ubicacion = $_POST['ubicacion'];
-            $this->denuncia->estado = $_POST['estado'];
-            $this->denuncia->ciudadano = $_POST['ciudadano'];
-            $this->denuncia->telefono_ciudadano = $_POST['telefono_ciudadano'];
-
-            if($this->denuncia->update()) {
-                header("Location: index.php?action=index");
-                exit();
+    public function editar() {
+        try {
+            $id = isset($_GET['id']) ? $_GET['id'] : null;
+            
+            if(!$id) {
+                throw new Exception('ID de denuncia no especificado');
             }
+
+            $denuncia = $this->denunciaModel->obtenerDenunciaPorId($id);
+            
+            if(!$denuncia) {
+                throw new Exception('Denuncia no encontrada');
+            }
+
+            if($_SERVER['REQUEST_METHOD'] === 'POST') {
+                $datos = [
+                    'id' => $id,
+                    'titulo' => trim($_POST['titulo']),
+                    'descripcion' => trim($_POST['descripcion']),
+                    'ubicacion' => trim($_POST['ubicacion']),
+                    'estado' => trim($_POST['estado']),
+                    'ciudadano' => trim($_POST['ciudadano']),
+                    'telefono_ciudadano' => trim($_POST['telefono_ciudadano'])
+                ];
+
+                if($this->denunciaModel->actualizarDenuncia($datos)) {
+                    $_SESSION['success'] = 'Denuncia actualizada exitosamente';
+                    redirect('?controller=denuncias');
+                } else {
+                    throw new Exception('Error al actualizar la denuncia');
+                }
+            }
+
+            view('denuncias/edit', ['denuncia' => $denuncia]);
+        } catch (Exception $e) {
+            $_SESSION['error'] = $e->getMessage();
+            redirect('?controller=denuncias');
         }
-        include __DIR__ . '/../views/denuncias/edit.php';
     }
 
-    public function delete() {
-        if(isset($_GET['id'])) {
-            $this->denuncia->id = $_GET['id'];
-            if($this->denuncia->delete()) {
-                header("Location: index.php?action=index");
-                exit();
+
+    public function eliminar() {
+        try {
+            $id = isset($_GET['id']) ? $_GET['id'] : null;
+            
+            if(!$id) {
+                throw new Exception('ID de denuncia no especificado');
             }
+
+            if($this->denunciaModel->eliminarDenuncia($id)) {
+                $_SESSION['success'] = 'Denuncia eliminada exitosamente';
+            } else {
+                throw new Exception('Error al eliminar la denuncia');
+            }
+        } catch (Exception $e) {
+            $_SESSION['error'] = $e->getMessage();
         }
-        header("Location: index.php?action=index");
-        exit();
+        
+        redirect('?controller=denuncias');
+    }
+
+
+    public function actualizarEstado() {
+        try {
+            $id = isset($_GET['id']) ? $_GET['id'] : null;
+            $estado = isset($_GET['estado']) ? $_GET['estado'] : null;
+            
+            if(!$id || !$estado) {
+                throw new Exception('Parámetros incompletos');
+            }
+
+            if($this->denunciaModel->actualizarEstado($id, $estado)) {
+                $_SESSION['success'] = 'Estado actualizado exitosamente';
+            } else {
+                throw new Exception('Error al actualizar el estado');
+            }
+        } catch (Exception $e) {
+            $_SESSION['error'] = $e->getMessage();
+        }
+        
+        redirect('?controller=denuncias');
     }
 }
 ?> 
